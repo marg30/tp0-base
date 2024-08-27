@@ -1,8 +1,6 @@
 # TP0: Docker + Comunicaciones + Concurrencia
 
-En el presente repositorio se provee un ejemplo de cliente-servidor el cual corre en containers con la ayuda de [docker-compose](https://docs.docker.com/compose/). El mismo es un ejemplo práctico brindado por la cátedra para que los alumnos tengan un esqueleto básico de cómo armar un proyecto de cero en donde todas las dependencias del mismo se encuentren encapsuladas en containers. El cliente (Golang) y el servidor (Python) fueron desarrollados en diferentes lenguajes simplemente para mostrar cómo dos lenguajes de programación pueden convivir en el mismo proyecto con la ayuda de containers.
-
-Por otro lado, se presenta una guía de ejercicios que los alumnos deberán resolver teniendo en cuenta las consideraciones generales descriptas al pie de este archivo.
+Estudiante: Mariana Galdo Martinez (105658)
 
 ## Instrucciones de uso
 El repositorio cuenta con un **Makefile** que posee encapsulado diferentes comandos utilizados recurrentemente en el proyecto en forma de targets. Los targets se ejecutan mediante la invocación de:
@@ -67,21 +65,14 @@ client1 exited with code 0
 En esta primera parte del trabajo práctico se plantean una serie de ejercicios que sirven para introducir las herramientas básicas de Docker que se utilizarán a lo largo de la materia. El entendimiento de las mismas será crucial para el desarrollo de los próximos TPs.
 
 ### Ejercicio N°1:
-Además, definir un script de bash `generar-compose.sh` que permita crear una definición de DockerCompose con una cantidad configurable de clientes.  El nombre de los containers deberá seguir el formato propuesto: client1, client2, client3, etc. 
 
-El script deberá ubicarse en la raíz del proyecto y recibirá por parámetro el nombre del archivo de salida y la cantidad de clientes esperados:
+Para crear una definición de DockerCompose con una cantidad configurable de clientes, se definió un script de bash `generar-compose.sh`, ubicado en la raíz del proyecto. 
 
-`./generar-compose.sh docker-compose-dev.yaml 5`
+Para ejecutar el script, es necesario incluir por parámetro el nombre del archivo de salida y la cantidad de clientes esperados:
 
-Considerar que en el contenido del script pueden invocar un subscript de Go o Python:
-
+```bash
+./generar-compose.sh docker-compose-dev.yaml 5
 ```
-#!/bin/bash
-echo "Nombre del archivo de salida: $1"
-echo "Cantidad de clientes: $2"
-python3 mi-generador.py $1 $2
-```
-
 
 
 ### Ejercicio N°2:

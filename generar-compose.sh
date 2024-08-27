@@ -25,6 +25,8 @@ services:
       - LOGGING_LEVEL=DEBUG
     networks:
       - testing_net
+    volumes:
+      - ./server/config.ini:/config.ini
 EOL
 
 for ((i=1; i<=NUM_CLIENTS; i++))
@@ -42,6 +44,8 @@ do
       - testing_net
     depends_on:
       - server
+    volumes:
+      - ./client/config.yaml:/config.yaml
 EOL
 done
 

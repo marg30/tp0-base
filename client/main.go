@@ -5,6 +5,9 @@ import (
 	"os"
 	"strings"
 	"time"
+	"os/signal"
+    "syscall"
+	"context"
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
@@ -111,5 +114,23 @@ func main() {
 	}
 
 	client := common.NewClient(clientConfig)
-	client.StartClientLoop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+	gracefulShutdown := make(chan os.Signal, 1)
+	signal.Notify(gracefulShutdown, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+        <-gracefulShutdown
+        log.Infof("Received shutdown signal")
+        cancel()
+    }()
+
+	go client.StartClientLoop(ctx)
+
+    <-ctx.Done()
+
+	client.Shutdown()
+
 }

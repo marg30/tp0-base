@@ -46,6 +46,7 @@ func (c *Client) createClientSocket() error {
 			c.config.ID,
 			err,
 		)
+		return err
 	}
 	c.conn = conn
 	return nil
@@ -62,7 +63,10 @@ func (c *Client) StartClientLoop(ctx context.Context) {
             return
         default:
 			// Create the connection the server in every loop iteration. Send an
-			c.createClientSocket()
+			err := c.createClientSocket()
+			if err != nil {
+				return
+			}
 
 			// TODO: Modify the send to avoid short-write
 			fmt.Fprintf(
@@ -96,8 +100,13 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 
 // Shutdown handles the cleanup of resources
 func (c *Client) Shutdown() {
-    if c.conn != nil {
-        c.conn.Close()
-		log.Infof("action: shutdown | result: success | client_id: %v", c.config.ID)
-    }
+	log.Infof("action: shutdown_client | result: in_progress | client_id: %v", c.config.ID)
+
+	time.Sleep(2 * time.Second)
+
+	if c.conn != nil {
+		c.conn.Close()
+	}
+
+	log.Infof("action: shutdown_client | result: success | client_id: %v", c.config.ID)
 }

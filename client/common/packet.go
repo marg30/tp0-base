@@ -8,7 +8,7 @@ import (
     "strconv"
 )
 
-type Packet struct {
+type BetPacket struct {
     NameLength      uint8
     Name            []byte
     LastNameLength  uint8
@@ -18,8 +18,8 @@ type Packet struct {
     Number          [4]byte
 }
 
-func NewPacket(name string, lastName string, document string, birthDate string, number string) Packet {
-    packet := Packet{}
+func NewPacket(name string, lastName string, document string, birthDate string, number string) BetPacket {
+    packet := BetPacket{}
 
     packet.NameLength = uint8(len(name))
     packet.Name = []byte(name)
@@ -39,7 +39,7 @@ func NewPacket(name string, lastName string, document string, birthDate string, 
 }
 
 // Serialize the packet into a byte slice
-func (p *Packet) Serialize() ([]byte, error) {
+func (p *BetPacket) Serialize() ([]byte, error) {
     var buf bytes.Buffer
 
     // Write the NameLength and Name fields
@@ -62,8 +62,8 @@ func (p *Packet) Serialize() ([]byte, error) {
 }
 
 // Deserialize the packet from a byte slice
-func Deserialize(data []byte) (*Packet, error) {
-    packet := &Packet{}
+func Deserialize(data []byte) (*BetPacket, error) {
+    packet := &BetPacket{}
     buf := bytes.NewReader(data)
     // Read the NameLength and Name fields
     if err := binary.Read(buf, binary.BigEndian, &packet.NameLength); err != nil {
@@ -114,7 +114,7 @@ func getEnvAsInt(name string, defaultValue int) int {
 	return intValue
 }
 
-func CreatePacketFromEnv() Packet {
+func CreatePacketFromEnv() BetPacket {
     name := os.Getenv("NOMBRE")
     last_name := os.Getenv("APELLIDO")
     document := os.Getenv("DOCUMENTO")
@@ -124,3 +124,35 @@ func CreatePacketFromEnv() Packet {
 	return NewPacket(name, last_name, document, birthDate, number)
 }
 
+type FinishedNotification struct {
+	ClientID uint8
+}
+
+func NewNotification(id string) FinishedNotification {
+    clientID, _ := strconv.ParseUint(id, 10, 8) 
+    notification := FinishedNotification{
+        ClientID: uint8(clientID),
+    }
+    return notification
+}
+
+func (p *FinishedNotification) Serialize() ([]byte, error) {
+    var buf bytes.Buffer
+
+    // Write the NameLength and Name fields
+    buf.WriteByte(p.ClientID)
+    return buf.Bytes(), nil
+}
+
+type WinnerResponse struct {
+	Amount uint32
+}
+
+func DeserializeWinnerResponse(data []byte) (*WinnerResponse, error) {
+    response := &WinnerResponse{}
+    buf := bytes.NewReader(data)
+    if err := binary.Read(buf, binary.BigEndian, &response.Amount); err != nil {
+        return nil, err
+    }
+    return response, nil
+}

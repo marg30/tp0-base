@@ -68,6 +68,13 @@ class ACKMessage:
             number_bytes
         )
         return bytes_arr
+
+class WinnerMessage:
+    def __init__(self, amount):
+        self.amount = amount
+    
+    def encode(self):
+        return self.amount.to_bytes(4, byteorder='big')
     
 class BatchMessage: 
     def __init__(self, client_id, batch_id, messages):
@@ -104,3 +111,13 @@ class BatchMessage:
             messages.append(msg)
 
         return cls(client_id, batch_id, messages)
+    
+
+class FinishedNotification:
+    def __init__(self, client_id):
+        self.client_id = client_id
+
+    @classmethod
+    def decode(cls, bytes_arr):
+        client_id = int.from_bytes(bytes_arr[0:1], byteorder='big')
+        return cls(client_id)

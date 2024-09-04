@@ -1,36 +1,37 @@
 import socket
 import logging
+import time
 import signal
-from .message import BatchMessage, ACKMessage
+from collections import defaultdict
+from .message import BatchMessage, ACKMessage, FinishedNotification, WinnerMessage
 from .protocol import Protocol
-from .utils import Bet, store_bets
+from .utils import Bet, store_bets, load_bets, has_won
 
+LENGTH_FINISHED_NOTIFICATION = 2
 class Server:
-    def __init__(self, port, listen_backlog):
+    def __init__(self, port, listen_backlog, timeout=5):
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
         self._server_socket.listen(listen_backlog)
         self.kill_now = False
+        self.timeout = timeout
+        self.received_notifications = set()
         signal.signal(signal.SIGINT, self.exit_gracefully)
         signal.signal(signal.SIGTERM, self.exit_gracefully)
         self.client_sockets = []
+        self.client_agency_map = defaultdict(int)
+        self.start_time = None
+        self._server_socket.settimeout(self.timeout)
 
     def run(self):
-        """
-        Dummy Server loop
-
-        Server that accept a new connections and establishes a
-        communication with a client. After client with communucation
-        finishes, servers starts to accept new connections again
-        """
-
         try:
-            while not self.kill_now:
+            self.start_time = time.time()
+            while not self.kill_now and (time.time() - self.start_time) < self.timeout:
                 try:
                     client_sock = self.__accept_new_connection()
-                    if client_sock:  # Only handle the client if the server is still running
-                        self.__handle_client_connection(client_sock)
+                    if client_sock:
+                        self.client_sockets.append(client_sock)
                 except OSError as e:
                     if self.kill_now:
                         # If we are shutting down, it's okay if accept fails
@@ -38,11 +39,24 @@ class Server:
                     else:
                         logging.error(f"action: accept_connection | result: fail | error: {e}")
                         continue
+            if len(self.client_sockets) > 0:
+                self.__process_connections()
         finally:
             self.__cleanup_resources()
             logging.info("action: shutdown_server | result: success")
 
-    def __handle_client_connection(self, client_sock):
+    def __process_connections(self):
+        protocols = []
+        for client_sock in self.client_sockets:
+            protocols.append(Protocol(client_sock))
+        while not self.__all_notifications_received():
+            for protocol in protocols:
+                self.__handle_client_connection(protocol)
+                if self.__all_notifications_received():
+                    break
+        self.__send_winners()
+
+    def __handle_client_connection(self, protocol):
         """
         Read message from a specific client socket and closes the socket
 
@@ -50,29 +64,18 @@ class Server:
         client socket will also be closed
         """
         try:
-            protocol = Protocol(client_sock)
-            addr = client_sock.getpeername()
-            self.client_sockets.append(client_sock)
             msg_encoded = protocol.receive_message()
-            batch_message = BatchMessage.decode(msg_encoded)
-            bets = []
-
-            try: 
-                for msg in batch_message.messages:
-                    bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
-                    bets.append(bet)
-            except:
-                logging.info(msg)
-                logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")
-
-            store_bets(bets)
-            logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
-            ack_msg = ACKMessage(batch_message.batch_id, len(bets))
-            protocol.send_message(ack_msg.encode())
+            if msg_encoded:
+                if self.is_finished_notification(msg_encoded):
+                    notification = FinishedNotification.decode(msg_encoded)
+                    self.received_notifications.add(notification.client_id)
+                    logging.info(f"action: finished_notification | result: success | client_id: {notification.client_id}")
+                else:
+                    self.__handle_bet(msg_encoded, protocol)
+            else: 
+                logging.info("No more data received from client.")
         except OSError as e:
             logging.error(f"action: receive_message | result: fail | error: {e}")
-        finally:
-            client_sock.close()
 
     def __accept_new_connection(self):
         """
@@ -88,13 +91,49 @@ class Server:
             c, addr = self._server_socket.accept()
             logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
             return c
+        except socket.timeout:
+            logging.info("Stopped accepting new connections (timeout).")
         except OSError as e:
             if self.kill_now:
                 # Server is shutting down, so this error is expected
                 logging.info("Server socket closed, stopping acceptance of new connections.")
             else:
                 logging.error(f"action: accept_connections | result: fail | error: {e}")
-            return None       
+            return None
+
+    def __handle_bet(self, msg_encoded, protocol):
+        batch_message = BatchMessage.decode(msg_encoded)
+        bets = []
+        logging.debug(f"action: process_bet")
+
+        try: 
+            for msg in batch_message.messages:
+                self.client_agency_map[protocol.client_sock] = msg.client_id
+                bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
+                bets.append(bet)
+        except:
+            logging.info(msg)
+            logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")
+
+        store_bets(bets)
+        logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
+        ack_msg = ACKMessage(batch_message.batch_id, len(bets))
+        protocol.send_message(ack_msg.encode()) 
+
+    def __send_winners(self):
+        logging.info("action: sorteo | result: success")
+        bets = load_bets()
+        winners_per_agency = defaultdict(int)
+        for bet in bets: 
+            if has_won(bet):
+                winners_per_agency[bet.agency] += 1
+        
+        for client_sock in self.client_sockets:
+            agency_id = self.client_agency_map[client_sock]
+            protocol = Protocol(client_sock)
+            winner_msg = WinnerMessage(winners_per_agency[agency_id])
+            protocol.send_message(winner_msg.encode())
+
     
     def exit_gracefully(self, signum, frame):
         """
@@ -111,7 +150,15 @@ class Server:
         logging.info("action: cleanup_resources | result: in_progress")
         for client_sock in self.client_sockets:
             try:
-                client_sock.close()
+                if client_sock:
+                    client_sock.close()
             except OSError as e:
                 logging.error(f"action: close_client_socket | result: fail | error: {e}")
         logging.info("action: cleanup_resources | result: success")    
+
+    def is_finished_notification(self, bytes_arr):
+        # Suponiendo que FinishedNotification tiene un identificador único o alguna forma de distinguirse
+        return len(bytes_arr) == LENGTH_FINISHED_NOTIFICATION
+
+    def __all_notifications_received(self):
+        return len(self.received_notifications) == len(self.client_sockets)

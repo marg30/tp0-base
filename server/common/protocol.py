@@ -4,6 +4,8 @@ import struct
 class Protocol:
     def __init__(self, client_sock):
         self.client_sock = client_sock
+        self.client_sock.setblocking(0)
+        self.client_sock.settimeout(2)
 
     def send_message(self, message: bytes):
         """
@@ -25,9 +27,10 @@ class Protocol:
             raise ConnectionError("Failed to receive message length.")
         
         message_length = struct.unpack('>I', length_data)[0]
-        message = self._recvall(message_length)
-        if not message:
-            raise ConnectionError("Failed to receive the full message.")        
+        try:
+            message = self._recvall(message_length)
+        except TimeoutError:
+            message = ''
         return message
 
     def _send_all(self, data: bytes):

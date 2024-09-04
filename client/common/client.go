@@ -3,6 +3,7 @@ package common
 import (
 	"net"
 	"time"
+	"fmt"
 	"context"
 	"bufio"
 	"os"
@@ -62,7 +63,8 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 		log.Infof("Client loop stopped due to shutdown signal")
 		return
 	default:
-		file, err := os.Open("agency.csv")
+		fileName := fmt.Sprintf("agency-%s.csv", c.config.ID)
+		file, err := os.Open(fileName)
 		if err != nil {
 			log.Errorf(
 				"Error opening file: %v", 
@@ -73,8 +75,8 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 		defer file.Close()
 	
 		scanner := bufio.NewScanner(file)
-		var batches [][]Packet
-		var batch []Packet
+		var batches [][]BetPacket
+		var batch []BetPacket
 
 		// Procesar el archivo y dividir en lotes
 		for scanner.Scan() {
@@ -104,32 +106,46 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 			batches = append(batches, batch)
 		}
 
+		err = c.createClientSocket()
+		if err != nil {
+			log.Errorf("Error creating client socket: %v", err)
+			return
+		}
+
+		protocol, err := NewProtocol(c.conn, c.config.ID)
+		if err != nil {
+			log.Criticalf(
+				"action: serialize_data | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
+
 		// Enviar cada batch por separado, creando una nueva conexión para cada uno
 		for batchID, batch := range batches {
 			log.Debugf("Sending batch")
-			err := c.createClientSocket()
-			if err != nil {
-				log.Errorf("Error creating client socket: %v", err)
-				return
-			}
-
-			protocol, err := NewProtocol(c.conn, c.config.ID)
-			if err != nil {
-				log.Criticalf(
-					"action: serialize_data | result: fail | client_id: %v | error: %v",
-					c.config.ID,
-					err,
-				)
-				return
-			}
-
 			c.sendBatch(batchID, batch, protocol)
-			c.conn.Close() // Cerrar la conexión después de enviar el batch
 		}
+		finishNotification := NewNotification(c.config.ID)
+		encodedNotification, _ := finishNotification.Serialize()
+		protocol.SendMessage(encodedNotification)
+		responseData, err := protocol.ReceiveMessage()
+		if err != nil {
+			log.Errorf(
+				"action: receive_message | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
+		responsePacket, err := DeserializeWinnerResponse(responseData)
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %v", responsePacket.Amount)
+		c.conn.Close()
 	}
 }
 
-func (c *Client) sendBatch(batchID int, batch []Packet, protocol *Protocol) {
+func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
 	log.Debugf("Batch ID: %v", batchID)
 	var allData []byte
 	for _, packet := range batch {

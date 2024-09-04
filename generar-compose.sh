@@ -39,7 +39,6 @@ do
     entrypoint: /client
     environment:
       - CLI_ID=$i
-      - CLI_LOG_LEVEL=DEBUG
     networks:
       - testing_net
     depends_on:

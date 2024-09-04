@@ -25,6 +25,9 @@ services:
       - server
     volumes:
       - ./client/config.yaml:/config.yaml
+    env_file:
+      - path: ./client/client1.env
+        required: true
 
   client2:
     container_name: client2
@@ -39,6 +42,9 @@ services:
       - server
     volumes:
       - ./client/config.yaml:/config.yaml
+    env_file:
+      - path: ./client/client2.env
+        required: true
 
   client3:
     container_name: client3
@@ -53,6 +59,43 @@ services:
       - server
     volumes:
       - ./client/config.yaml:/config.yaml
+    env_file:
+      - path: ./client/client3.env
+        required: true
+
+  client4:
+    container_name: client4
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=4
+      - CLI_LOG_LEVEL=DEBUG
+    networks:
+      - testing_net
+    depends_on:
+      - server
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    env_file:
+      - path: ./client/client4.env
+        required: true
+
+  client5:
+    container_name: client5
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=5
+      - CLI_LOG_LEVEL=DEBUG
+    networks:
+      - testing_net
+    depends_on:
+      - server
+    volumes:
+      - ./client/config.yaml:/config.yaml
+    env_file:
+      - path: ./client/client5.env
+        required: true
 
 networks:
   testing_net:

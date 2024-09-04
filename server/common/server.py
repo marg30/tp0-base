@@ -1,6 +1,9 @@
 import socket
 import logging
 import signal
+from .message import Message, ACKMessage
+from .protocol import Protocol
+from .utils import Bet, store_bets
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -22,8 +25,6 @@ class Server:
         finishes, servers starts to accept new connections again
         """
 
-        # TODO: Modify this program to handle signal to graceful shutdown
-        # the server
         try:
             while not self.kill_now:
                 try:
@@ -49,13 +50,17 @@ class Server:
         client socket will also be closed
         """
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
+            protocol = Protocol(client_sock)
             addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
             self.client_sockets.append(client_sock)
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
+            msg_encoded = protocol.receive_message()
+            msg = Message.decode(msg_encoded)
+            print(msg)
+            bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
+            store_bets([bet])
+            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
+            ack_msg = ACKMessage(msg.id_document, msg.number)
+            protocol.send_message(ack_msg.encode())
         except OSError as e:
             logging.error("action: receive_message | result: fail | error: {e}")
         finally:

@@ -46,6 +46,9 @@ do
       - server
     volumes:
       - ./client/config.yaml:/config.yaml
+    env_file:
+      - path: ./client/client$i.env
+        required: true
 EOL
 done
 

@@ -1,8 +1,6 @@
 package common
 
 import (
-	"bufio"
-	"fmt"
 	"net"
 	"time"
 	"context"
@@ -20,7 +18,7 @@ type ClientConfig struct {
 	LoopPeriod    time.Duration
 }
 
-// Client Entity that encapsulates how
+// Client Entity that encapsulates the client's logic
 type Client struct {
 	config ClientConfig
 	conn   net.Conn
@@ -54,48 +52,71 @@ func (c *Client) createClientSocket() error {
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop(ctx context.Context) {
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount; msgID++ {
-		select {
-        case <-ctx.Done():
-            log.Infof("Client loop stopped due to shutdown signal")
-            return
-        default:
-			// Create the connection the server in every loop iteration. Send an
-			err := c.createClientSocket()
-			if err != nil {
-				return
-			}
-
-			// TODO: Modify the send to avoid short-write
-			fmt.Fprintf(
-				c.conn,
-				"[CLIENT %v] Message N°%v\n",
-				c.config.ID,
-				msgID,
-			)
-			msg, err := bufio.NewReader(c.conn).ReadString('\n')
-			c.conn.Close()
-
-			if err != nil {
-				log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-					c.config.ID,
-					err,
-				)
-				return
-			}
-
-			log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-				c.config.ID,
-				msg,
-			)
-
-			// Wait a time between sending one message and the next one
-			time.Sleep(c.config.LoopPeriod)
+	select {
+	case <-ctx.Done():
+		log.Infof("Client loop stopped due to shutdown signal")
+		return
+	default:
+		// Create the connection the server in every loop iteration. Send an
+		err := c.createClientSocket()
+		if err != nil {
+			return
 		}
+
+		protocol, err := NewProtocol(c.conn, c.config.ID)
+		log.Infof("id %v", c.config.ID)
+		if err != nil {
+			log.Criticalf(
+				"action: serialize_data | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
+		packet := CreatePacketFromEnv()
+
+		// Serialize the packet
+		data, err := packet.Serialize()
+		if err != nil {
+			log.Criticalf(
+				"action: serialize_data | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
+
+		// Send the data using the protocol
+		if err := protocol.SendMessage(data); err != nil {
+			log.Criticalf(
+				"action: send_message | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
+
+		// Receive and process the response
+		responseData, err := protocol.ReceiveMessage()
+		if err != nil {
+			log.Errorf(
+				"action: receive_message | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
+		responsePacket, err := DeserializeResponse(responseData)
+		document, number := responsePacket.AsIntegers()
+
+		log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
+		document, number,
+		)
+
+		c.conn.Close()
+		// Wait a time between sending one message and the next one
+		time.Sleep(c.config.LoopPeriod)
 	}
-	log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 }
 
 // Shutdown handles the cleanup of resources

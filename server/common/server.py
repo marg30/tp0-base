@@ -1,7 +1,7 @@
 import socket
 import logging
 import signal
-from .message import Message, ACKMessage
+from .message import BatchMessage, ACKMessage
 from .protocol import Protocol
 from .utils import Bet, store_bets
 
@@ -54,15 +54,23 @@ class Server:
             addr = client_sock.getpeername()
             self.client_sockets.append(client_sock)
             msg_encoded = protocol.receive_message()
-            msg = Message.decode(msg_encoded)
-            print(msg)
-            bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
-            store_bets([bet])
-            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
-            ack_msg = ACKMessage(msg.id_document, msg.number)
+            batch_message = BatchMessage.decode(msg_encoded)
+            bets = []
+
+            try: 
+                for msg in batch_message.messages:
+                    bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
+                    bets.append(bet)
+            except:
+                logging.info(msg)
+                logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")
+
+            store_bets(bets)
+            logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
+            ack_msg = ACKMessage(batch_message.batch_id, len(bets))
             protocol.send_message(ack_msg.encode())
         except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
+            logging.error(f"action: receive_message | result: fail | error: {e}")
         finally:
             client_sock.close()
 

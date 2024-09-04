@@ -56,25 +56,51 @@ class Message:
     
 
 class ACKMessage:
-    def __init__(self, id_document, number):
-        self.id_document = id_document
+    def __init__(self, batch_id, number):
+        self.batch_id = batch_id
         self.number = number
 
     def encode(self):
-        id_document_bytes = self.id_document.to_bytes(8, byteorder='big')
+        batch_id_bytes = self.batch_id.to_bytes(4, byteorder='big')
         number_bytes = self.number.to_bytes(4, byteorder='big')
         bytes_arr = (
-            id_document_bytes + 
-            len(number_bytes).to_bytes(1, byteorder='big') + number_bytes
+            batch_id_bytes + 
+            number_bytes
         )
         return bytes_arr
+    
+class BatchMessage: 
+    def __init__(self, client_id, batch_id, messages):
+        self.client_id = client_id
+        self.batch_id = batch_id
+        self.messages = messages
 
     @classmethod
     def decode(cls, bytes_arr):
-        id_document = int.from_bytes(bytes_arr[0:0 + 8], byteorder='big')
-        number_offset = 18
-        number_length = int.from_bytes(bytes_arr[number_offset:number_offset + 1], byteorder='big')
-        number = int.from_bytes(bytes_arr[number_offset + 1:number_offset + 1 + number_length], byteorder='big')
+        client_id = int.from_bytes(bytes_arr[0:1], byteorder='big')
+        batch_id = int.from_bytes(bytes_arr[1:5], byteorder='big')
+        number_messages = int.from_bytes(bytes_arr[5:9], byteorder='big')
+        previous_message_offset = 9
+        messages = []
+        for i in range(number_messages):
+            name_length = int.from_bytes(bytes_arr[previous_message_offset:previous_message_offset+1], byteorder='big')
+            name_offset = previous_message_offset + 1
+            name = bytes_arr[name_offset:name_offset + name_length].decode()
+            last_name_offset = name_offset + name_length
+            last_name_length = int.from_bytes(bytes_arr[last_name_offset:last_name_offset + 1], byteorder='big')
+            last_name = bytes_arr[last_name_offset + 1:last_name_offset + 1 + last_name_length].decode()
 
-        return cls(id_document, number)
-    
+            id_document_offset = last_name_offset + 1 + last_name_length
+            id_document = int.from_bytes(bytes_arr[id_document_offset:id_document_offset + 8], byteorder='big')
+
+            birth_date_offset = id_document_offset + 8
+            birth_date = bytes_arr[birth_date_offset:birth_date_offset + 10].decode()
+
+            number_offset = birth_date_offset + 10
+            number = int.from_bytes(bytes_arr[number_offset:number_offset + 4], byteorder='big')
+
+            previous_message_offset = number_offset + 4
+            msg = Message(client_id, name, last_name, id_document, birth_date, number)
+            messages.append(msg)
+
+        return cls(client_id, batch_id, messages)

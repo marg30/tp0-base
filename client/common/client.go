@@ -113,7 +113,7 @@ func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc)
 
 	// Notificar que se ha completado el procesamiento
 	cancel()
-		}
+}
 
 // sendAndResetBatch Envía un batch y resetea el slice
 func (c *Client) sendAndResetBatch(batch *[]Packet, batchID int) {

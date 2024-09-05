@@ -133,10 +133,10 @@ class Server:
     def __send_winners(self):
         logging.info("action: sorteo | result: success")
         bets = load_bets()
-        winners_per_agency = defaultdict(int)
+        winners_per_agency = defaultdict(list)
         for bet in bets: 
             if has_won(bet):
-                winners_per_agency[bet.agency] += 1
+                winners_per_agency[bet.agency].append(bet.document)
         
         for client_sock in self.client_sockets:
             agency_id = self.client_agency_map[client_sock]

@@ -3,8 +3,6 @@ package common
 import (
     "encoding/binary"
     "bytes"
-    "os"
-    "fmt"
     "strconv"
 )
 
@@ -61,69 +59,6 @@ func (p *BetPacket) Serialize() ([]byte, error) {
     return buf.Bytes(), nil
 }
 
-// Deserialize the packet from a byte slice
-func Deserialize(data []byte) (*BetPacket, error) {
-    packet := &BetPacket{}
-    buf := bytes.NewReader(data)
-    // Read the NameLength and Name fields
-    if err := binary.Read(buf, binary.BigEndian, &packet.NameLength); err != nil {
-        return nil, err
-    }
-    packet.Name = make([]byte, packet.NameLength)
-    if _, err := buf.Read(packet.Name); err != nil {
-        return nil, err
-    }
-
-    // Read the LastNameLength and LastName fields
-    if err := binary.Read(buf, binary.BigEndian, &packet.LastNameLength); err != nil {
-        return nil, err
-    }
-    packet.LastName = make([]byte, packet.LastNameLength)
-    if _, err := buf.Read(packet.LastName); err != nil {
-        return nil, err
-    }
-
-    // Read the Document field (fixed size)
-    if _, err := buf.Read(packet.Document[:]); err != nil {
-        return nil, err
-    }
-
-    // Read the BirthDate field (fixed size)
-    if _, err := buf.Read(packet.BirthDate[:]); err != nil {
-        return nil, err
-    }
-
-    if _, err := buf.Read(packet.Number[:]); err != nil {
-        return nil, err
-    }
-
-    return packet, nil
-}
-
-func getEnvAsInt(name string, defaultValue int) int {
-	value, exists := os.LookupEnv(name)
-	if !exists {
-		return defaultValue
-	}
-
-	intValue, err := strconv.Atoi(value)
-	if err != nil {
-		fmt.Printf("Warning: could not convert %s to int: %v\n", name, err)
-		return defaultValue
-	}
-	return intValue
-}
-
-func CreatePacketFromEnv() BetPacket {
-    name := os.Getenv("NOMBRE")
-    last_name := os.Getenv("APELLIDO")
-    document := os.Getenv("DOCUMENTO")
-    birthDate := os.Getenv("NACIMIENTO")
-    number := os.Getenv("NUMERO")
-
-	return NewPacket(name, last_name, document, birthDate, number)
-}
-
 type FinishedNotification struct {
 	ClientID uint8
 }
@@ -145,14 +80,24 @@ func (p *FinishedNotification) Serialize() ([]byte, error) {
 }
 
 type WinnerResponse struct {
-	Amount uint32
+	Documents []uint64
 }
 
 func DeserializeWinnerResponse(data []byte) (*WinnerResponse, error) {
     response := &WinnerResponse{}
-    buf := bytes.NewReader(data)
-    if err := binary.Read(buf, binary.BigEndian, &response.Amount); err != nil {
-        return nil, err
-    }
-    return response, nil
+	buf := bytes.NewReader(data)
+
+	for {
+		var document uint64
+		err := binary.Read(buf, binary.BigEndian, &document)
+		if err != nil {
+			break
+		}
+		response.Documents = append(response.Documents, document)
+	}
+	return response, nil
+}
+
+func (w *WinnerResponse) NumberWinners() (int) {
+    return len(w.Documents)
 }

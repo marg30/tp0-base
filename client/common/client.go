@@ -145,7 +145,7 @@ func (c *Client) askForResults(protocol *Protocol) {
 		return
 	}
 	responsePacket, err := DeserializeWinnerResponse(responseData)
-	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %v", responsePacket.Amount)
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %v", responsePacket.NumberWinners)
 }
 
 func (c *Client) openFile(fileName string) (*os.File, error) {

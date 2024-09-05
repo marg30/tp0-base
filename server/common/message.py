@@ -62,11 +62,14 @@ class ACKMessage:
 
 
 class WinnerMessage:
-    def __init__(self, amount):
-        self.amount = amount
+    def __init__(self, documents):
+        self.documents = documents
 
     def encode(self):
-        return self.amount.to_bytes(4, byteorder='big')
+        encoded = b''
+        for doc in self.documents:
+            encoded += int(doc).to_bytes(8, byteorder='big')
+        return encoded
 
 
 class BatchMessage:

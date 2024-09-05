@@ -8,6 +8,12 @@ from .protocol import Protocol
 from .utils import Bet, store_bets, load_bets, has_won
 
 LENGTH_FINISHED_NOTIFICATION = 2
+
+
+def is_finished_notification(bytes_arr):
+    return len(bytes_arr) == LENGTH_FINISHED_NOTIFICATION
+
+
 class Server:
     def __init__(self, port, listen_backlog, timeout=5):
         # Initialize server socket
@@ -66,7 +72,7 @@ class Server:
         try:
             msg_encoded = protocol.receive_message()
             if msg_encoded:
-                if self.is_finished_notification(msg_encoded):
+                if is_finished_notification(msg_encoded):
                     notification = FinishedNotification.decode(msg_encoded)
                     self.received_notifications.add(notification.client_id)
                     logging.info(f"action: finished_notification | result: success | client_id: {notification.client_id}")
@@ -75,7 +81,10 @@ class Server:
             else: 
                 logging.info("No more data received from client.")
         except OSError as e:
-            logging.error(f"action: receive_message | result: fail | error: {e}")
+            if e == "timed out":
+                logging.debug("No more data received from client.")
+            else:
+                logging.error(f"action: receive_message | result: fail | error: {e}")
 
     def __accept_new_connection(self):
         """
@@ -105,20 +114,21 @@ class Server:
         batch_message = BatchMessage.decode(msg_encoded)
         bets = []
         logging.debug(f"action: process_bet")
+        if protocol.client_sock not in self.client_agency_map:
+            self.client_agency_map[protocol.client_sock] = batch_message.client_id
 
-        try: 
+        try:
             for msg in batch_message.messages:
-                self.client_agency_map[protocol.client_sock] = msg.client_id
-                bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
+                bet = Bet(batch_message.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
                 bets.append(bet)
-        except:
-            logging.info(msg)
+        except Exception as e: 
+            logging.debug(e)
             logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")
 
         store_bets(bets)
         logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
         ack_msg = ACKMessage(batch_message.batch_id, len(bets))
-        protocol.send_message(ack_msg.encode()) 
+        protocol.send_message(ack_msg.encode())
 
     def __send_winners(self):
         logging.info("action: sorteo | result: success")
@@ -154,11 +164,7 @@ class Server:
                     client_sock.close()
             except OSError as e:
                 logging.error(f"action: close_client_socket | result: fail | error: {e}")
-        logging.info("action: cleanup_resources | result: success")    
-
-    def is_finished_notification(self, bytes_arr):
-        # Suponiendo que FinishedNotification tiene un identificador único o alguna forma de distinguirse
-        return len(bytes_arr) == LENGTH_FINISHED_NOTIFICATION
+        logging.info("action: cleanup_resources | result: success")
 
     def __all_notifications_received(self):
         return len(self.received_notifications) == len(self.client_sockets)

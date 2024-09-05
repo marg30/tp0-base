@@ -128,7 +128,7 @@ func main() {
         cancel()
     }()
 
-	go client.StartClientLoop(ctx)
+	go client.StartClientLoop(ctx, cancel)
 
     <-ctx.Done()
 

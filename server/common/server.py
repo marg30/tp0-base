@@ -143,11 +143,13 @@ class Server:
         bets = []
         logging.debug(f"action: process_bet")
 
+        if protocol.client_sock not in self.client_agency_map:
+            self.client_agency_map[protocol.client_sock] = batch_message.client_id
+
         try: 
             logging.debug("Processing batch")
             for msg in batch_message.messages:
-                self.client_agency_map[protocol.client_sock] = msg.client_id
-                bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
+                bet = Bet(batch_message.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
                 bets.append(bet)
         except:
             logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")

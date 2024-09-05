@@ -51,7 +51,6 @@ class Server:
         """
         try:
             protocol = Protocol(client_sock)
-            addr = client_sock.getpeername()
             self.client_sockets.append(client_sock)
             msg_encoded = protocol.receive_message()
             batch_message = BatchMessage.decode(msg_encoded)
@@ -62,7 +61,6 @@ class Server:
                     bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
                     bets.append(bet)
             except:
-                logging.info(msg)
                 logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")
 
             store_bets(bets)

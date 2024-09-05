@@ -51,7 +51,6 @@ class Server:
         """
         try:
             protocol = Protocol(client_sock)
-            addr = client_sock.getpeername()
             self.client_sockets.append(client_sock)
             msg_encoded = protocol.receive_message()
             msg = Message.decode(msg_encoded)
@@ -61,7 +60,7 @@ class Server:
             ack_msg = ACKMessage(msg.id_document, msg.number)
             protocol.send_message(ack_msg.encode())
         except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
+            logging.error(f"action: receive_message | result: fail | error: {e}")
         finally:
             client_sock.close()
 

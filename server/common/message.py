@@ -7,24 +7,6 @@ class Message:
         self.birth_date = birth_date
         self.number = number
 
-    def encode(self):
-        client_id_bytes = self.client_id.to_bytes(1, byteorder='big')
-        name_bytes = self.name.encode()
-        last_name_bytes = self.last_name.encode()
-        id_document_bytes = self.id_document.to_bytes(8, byteorder='big')
-        birth_date_bytes = self.birth_date.encode()
-        number_bytes = self.number.to_bytes(4, byteorder='big')
-        bytes_arr = (
-            client_id_bytes + 
-            len(name_bytes).to_bytes(1, byteorder='big') + name_bytes + 
-            len(last_name_bytes).to_bytes(1, byteorder='big') + last_name_bytes +
-            id_document_bytes + 
-            birth_date_bytes + 
-            len(number_bytes).to_bytes(1, byteorder='big') + number_bytes
-        )
-
-        return bytes_arr
-
     @classmethod
     def decode(cls, bytes_arr):
         client_id = int.from_bytes(bytes_arr[0:1], byteorder='big')
@@ -68,13 +50,4 @@ class ACKMessage:
             len(number_bytes).to_bytes(1, byteorder='big') + number_bytes
         )
         return bytes_arr
-
-    @classmethod
-    def decode(cls, bytes_arr):
-        id_document = int.from_bytes(bytes_arr[0:0 + 8], byteorder='big')
-        number_offset = 18
-        number_length = int.from_bytes(bytes_arr[number_offset:number_offset + 1], byteorder='big')
-        number = int.from_bytes(bytes_arr[number_offset + 1:number_offset + 1 + number_length], byteorder='big')
-
-        return cls(id_document, number)
     

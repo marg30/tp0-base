@@ -1,14 +1,14 @@
 package common
 
 import (
-	"net"
-	"time"
-	"fmt"
-	"context"
 	"bufio"
-	"os"
+	"context"
 	"encoding/binary"
+	"fmt"
+	"net"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/op/go-logging"
 )
@@ -67,13 +67,23 @@ func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc)
 		file, err := os.Open(fileName)
 		if err != nil {
 			log.Errorf(
-				"Error opening file: %v", 
-				err, 
+				"Error opening file: %v",
+				err,
 			)
 			return
 		}
-		defer file.Close()
-	
+		defer func(file *os.File) {
+			err := file.Close()
+			if err != nil {
+				log.Errorf(
+					"action: close_file | result: fail | client_id: %v | error: %v",
+					c.config.ID,
+					err,
+				)
+				return
+			}
+		}(file)
+
 		scanner := bufio.NewScanner(file)
 		var batches [][]BetPacket
 		var batch []BetPacket
@@ -129,7 +139,15 @@ func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc)
 		}
 		finishNotification := NewNotification(c.config.ID)
 		encodedNotification, _ := finishNotification.Serialize()
-		protocol.SendMessage(encodedNotification)
+		err = protocol.SendMessage(encodedNotification)
+		if err != nil {
+			log.Errorf(
+				"action: send_message | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
 		responseData, err := protocol.ReceiveMessage()
 		if err != nil {
 			log.Errorf(
@@ -141,8 +159,6 @@ func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc)
 		}
 		responsePacket, err := DeserializeWinnerResponse(responseData)
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %v", responsePacket.Amount)
-		log.Infof("action: closing_connection | client_id: %v", c.config.ID)
-		c.conn.Close()
 		cancel()
 	}
 }
@@ -164,7 +180,7 @@ func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
 	}
 
 	batchLength := make([]byte, 4)
-	binary.BigEndian.PutUint32(batchLength,	uint32(len(batch)))
+	binary.BigEndian.PutUint32(batchLength, uint32(len(batch)))
 	batchIDBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(batchIDBytes, uint32(batchID))
 	// log.Debugf("byte length: %v", batchLength)
@@ -190,6 +206,14 @@ func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
 		return
 	}
 	responsePacket, err := DeserializeResponse(responseData)
+	if err != nil {
+		log.Errorf(
+			"action: deserialize_response | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+		return
+	}
 	batchID, batchSize := responsePacket.AsIntegers()
 	log.Infof("action: batch_sent | result: success | batch_id: %v | cantidad: %v", batchID, batchSize)
 }
@@ -201,7 +225,15 @@ func (c *Client) Shutdown() {
 	time.Sleep(2 * time.Second)
 
 	if c.conn != nil {
-		c.conn.Close()
+		err := c.conn.Close()
+		if err != nil {
+			log.Errorf(
+				"action: shutdown_client | result: fail | client_id: %v | error: %v",
+				c.config.ID,
+				err,
+			)
+			return
+		}
 	}
 
 	log.Infof("action: shutdown_client | result: success | client_id: %v", c.config.ID)

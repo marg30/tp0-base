@@ -22,7 +22,6 @@ services:
     entrypoint: python3 /main.py
     environment:
       - PYTHONUNBUFFERED=1
-      - LOGGING_LEVEL=DEBUG
     networks:
       - testing_net
     volumes:
@@ -39,16 +38,13 @@ do
     entrypoint: /client
     environment:
       - CLI_ID=$i
-      - CLI_LOG_LEVEL=DEBUG
     networks:
       - testing_net
     depends_on:
       - server
     volumes:
       - ./client/config.yaml:/config.yaml
-    env_file:
-      - path: ./client/client$i.env
-        required: true
+      - ./.data/agency-$i.csv:/agency-$i.csv
 EOL
 done
 

@@ -1,13 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"strings"
-	"time"
 	"os/signal"
-    "syscall"
-	"context"
+	"strings"
+	"syscall"
+	"time"
 
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
@@ -111,26 +111,26 @@ func main() {
 		ID:            v.GetString("id"),
 		LoopAmount:    v.GetInt("loop.amount"),
 		LoopPeriod:    v.GetDuration("loop.period"),
-		BatchAmount: v.GetInt("batch.maxAmount"),
+		BatchAmount:   v.GetInt("batch.maxAmount"),
 	}
 
 	client := common.NewClient(clientConfig)
 
 	ctx, cancel := context.WithCancel(context.Background())
-    defer cancel()
+	defer cancel()
 
 	gracefulShutdown := make(chan os.Signal, 1)
 	signal.Notify(gracefulShutdown, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-        <-gracefulShutdown
-        log.Infof("Received shutdown signal")
-        cancel()
-    }()
+		<-gracefulShutdown
+		log.Infof("Received shutdown signal")
+		cancel()
+	}()
 
-	go client.StartClientLoop(ctx)
+	go client.StartClientLoop(ctx, cancel)
 
-    <-ctx.Done()
+	<-ctx.Done()
 
 	client.Shutdown()
 

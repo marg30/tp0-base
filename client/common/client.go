@@ -1,13 +1,14 @@
 package common
 
 import (
-	"net"
-	"time"
-	"context"
 	"bufio"
-	"os"
+	"context"
 	"encoding/binary"
+	"fmt"
+	"net"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/op/go-logging"
 )
@@ -56,22 +57,32 @@ func (c *Client) createClientSocket() error {
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop(ctx context.Context) {
+func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc) {
 	select {
 	case <-ctx.Done():
 		log.Infof("Client loop stopped due to shutdown signal")
 		return
 	default:
-		file, err := os.Open("agency.csv")
+		fileName := fmt.Sprintf("agency-%s.csv", c.config.ID)
+		file, err := os.Open(fileName)
 		if err != nil {
 			log.Errorf(
-				"Error opening file: %v", 
-				err, 
+				"Error opening file: %v",
+				err,
 			)
 			return
 		}
-		defer file.Close()
-	
+		defer func(file *os.File) {
+			err := file.Close()
+			if err != nil {
+				log.Errorf(
+					"Error closing file: %v",
+					err,
+				)
+				return
+			}
+		}(file)
+
 		scanner := bufio.NewScanner(file)
 		var batches [][]Packet
 		var batch []Packet
@@ -124,7 +135,7 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 			}
 
 			c.sendBatch(batchID, batch, protocol)
-			c.conn.Close() // Cerrar la conexión después de enviar el batch
+			cancel()
 		}
 	}
 }
@@ -146,7 +157,7 @@ func (c *Client) sendBatch(batchID int, batch []Packet, protocol *Protocol) {
 	}
 
 	batchLength := make([]byte, 4)
-	binary.BigEndian.PutUint32(batchLength,	uint32(len(batch)))
+	binary.BigEndian.PutUint32(batchLength, uint32(len(batch)))
 	batchIDBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(batchIDBytes, uint32(batchID))
 	log.Debugf("byte length: %v", batchLength)
@@ -172,6 +183,13 @@ func (c *Client) sendBatch(batchID int, batch []Packet, protocol *Protocol) {
 		return
 	}
 	responsePacket, err := DeserializeResponse(responseData)
+	if err != nil {
+		log.Errorf(
+			"action: deser | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+	}
 	batchID, batchSize := responsePacket.AsIntegers()
 	log.Infof("action: batch_sent | result: success | batch_id: %v | cantidad: %v", batchID, batchSize)
 }

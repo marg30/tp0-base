@@ -1,6 +1,3 @@
-import socket
-import struct
-
 class Protocol:
     def __init__(self, client_sock):
         self.client_sock = client_sock
@@ -10,7 +7,7 @@ class Protocol:
         Send a message with a header containing the length of the message.
         This method ensures that the message is sent completely, handling short writes.
         """
-        message_length = struct.pack('>I', len(message))        
+        message_length = len(message).to_bytes(4, byteorder='big')
         self._send_all(message_length)
         self._send_all(message)
     
@@ -24,7 +21,7 @@ class Protocol:
         if not length_data:
             raise ConnectionError("Failed to receive message length.")
         
-        message_length = struct.unpack('>I', length_data)[0]
+        message_length = int.from_bytes(length_data, byteorder='big')
         message = self._recvall(message_length)
         if not message:
             raise ConnectionError("Failed to receive the full message.")        

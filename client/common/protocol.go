@@ -25,7 +25,6 @@ func NewProtocol(conn net.Conn, ID string) (*Protocol, error) {
 // SendMessage Sends a message with a header containing the length of the data
 func (p *Protocol) SendMessage(data []byte) error {
 	allData := append([]byte{p.ID}, data...)
-	log.Debugf("byte array: %v", allData)
 
 	dataLength := uint32(len(allData))
 	var lengthBuffer bytes.Buffer

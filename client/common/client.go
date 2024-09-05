@@ -57,7 +57,7 @@ func (c *Client) createClientSocket() error {
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop(ctx context.Context) {
+func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc) {
 	select {
 	case <-ctx.Done():
 		log.Infof("Client loop stopped due to shutdown signal")
@@ -141,7 +141,9 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 		}
 		responsePacket, err := DeserializeWinnerResponse(responseData)
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %v", responsePacket.Amount)
+		log.Infof("action: closing_connection | client_id: %v", c.config.ID)
 		c.conn.Close()
+		cancel()
 	}
 }
 
@@ -165,7 +167,7 @@ func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
 	binary.BigEndian.PutUint32(batchLength,	uint32(len(batch)))
 	batchIDBytes := make([]byte, 4)
 	binary.BigEndian.PutUint32(batchIDBytes, uint32(batchID))
-	log.Debugf("byte length: %v", batchLength)
+	// log.Debugf("byte length: %v", batchLength)
 	allData = append(batchLength, allData...)
 	allData = append(batchIDBytes, allData...)
 

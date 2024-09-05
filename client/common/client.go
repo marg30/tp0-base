@@ -3,9 +3,7 @@ package common
 import (
 	"bufio"
 	"context"
-	"encoding/binary"
-	"fmt"
-	"net"
+	"bufio"
 	"os"
 	"strings"
 	"time"
@@ -63,129 +61,116 @@ func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc)
 		log.Infof("Client loop stopped due to shutdown signal")
 		return
 	default:
-		fileName := fmt.Sprintf("agency-%s.csv", c.config.ID)
-		file, err := os.Open(fileName)
-		if err != nil {
-			log.Errorf(
-				"Error opening file: %v",
-				err,
-			)
-			return
-		}
-		defer func(file *os.File) {
-			err := file.Close()
-			if err != nil {
-				log.Errorf(
-					"action: close_file | result: fail | client_id: %v | error: %v",
-					c.config.ID,
-					err,
-				)
-				return
-			}
-		}(file)
-
-		scanner := bufio.NewScanner(file)
-		var batches [][]BetPacket
-		var batch []BetPacket
-
-		// Procesar el archivo y dividir en lotes
-		for scanner.Scan() {
-			line := scanner.Text()
-			fields := strings.Split(line, ",")
-
-			if len(fields) != 5 {
-				log.Warningf("Invalid line format: %v", line)
-				continue
-			}
-
-			packet := NewPacket(fields[0], fields[1], fields[2], fields[3], fields[4])
-			batch = append(batch, packet)
-
-			if len(batch) == c.config.BatchAmount {
-				batches = append(batches, batch)
-				batch = nil
-			}
-		}
-
-		if err := scanner.Err(); err != nil {
-			log.Errorf("Error reading file: %v", err)
-		}
-
-		// Añadir el último batch si tiene elementos
-		if len(batch) > 0 {
-			batches = append(batches, batch)
-		}
-
-		err = c.createClientSocket()
+		err := c.createClientSocket()
 		if err != nil {
 			log.Errorf("Error creating client socket: %v", err)
 			return
 		}
 
 		protocol, err := NewProtocol(c.conn, c.config.ID)
-		if err != nil {
-			log.Criticalf(
-				"action: serialize_data | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
-
-		// Enviar cada batch por separado, creando una nueva conexión para cada uno
-		for batchID, batch := range batches {
-			log.Debugf("Sending batch")
-			c.sendBatch(batchID, batch, protocol)
-		}
-		finishNotification := NewNotification(c.config.ID)
-		encodedNotification, _ := finishNotification.Serialize()
-		err = protocol.SendMessage(encodedNotification)
-		if err != nil {
-			log.Errorf(
-				"action: send_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
-		responseData, err := protocol.ReceiveMessage()
-		if err != nil {
-			log.Errorf(
-				"action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			return
-		}
-		responsePacket, err := DeserializeWinnerResponse(responseData)
-		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %v", responsePacket.Amount)
+		c.processBetsInBatch(protocol)
+		c.askForResults(protocol)
+		// Notificar que se ha completado el procesamiento
 		cancel()
 	}
 }
 
-func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
-	log.Debugf("Batch ID: %v", batchID)
-	var allData []byte
-	for _, packet := range batch {
-		data, err := packet.Serialize()
+func (c *Client) processBetsInBatch(protocol *Protocol) {
+	fileName := fmt.Sprintf("agency-%s.csv", c.config.ID)
+	file, err := c.openFile(fileName)
+	if err != nil {
+		log.Errorf("Failed to open file: %v", err)
+		return
+	}
+	defer func(file *os.File) {
+		err := file.Close()
 		if err != nil {
-			log.Criticalf(
-				"action: serialize_data | result: fail | client_id: %v | error: %v",
-				c.config.ID,
+			log.Errorf(
+				"Error closing file: %v",
 				err,
 			)
 			return
 		}
-		allData = append(allData, data...)
+	}(file)
+	scanner := bufio.NewScanner(file)
+	var batch []BetPacket
+	batchID := 0
+
+	// Leer y procesar el archivo CSV mientras se envían los batches
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Split(line, ",")
+
+		if len(fields) != 5 {
+			log.Warningf("Invalid line format: %v", line)
+			continue
+		}
+
+		packet := NewPacket(fields[0], fields[1], fields[2], fields[3], fields[4])
+		batch = append(batch, packet)
+
+		// Si se completa el tamaño del batch, enviarlo
+		if len(batch) == c.config.BatchAmount {
+			c.sendBatch(batchID, batch, protocol)
+			c.waitForBatchConfirmation(protocol)
+			batch = nil
+			batchID++
+		}
 	}
 
-	batchLength := make([]byte, 4)
-	binary.BigEndian.PutUint32(batchLength, uint32(len(batch)))
-	batchIDBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(batchIDBytes, uint32(batchID))
-	// log.Debugf("byte length: %v", batchLength)
-	allData = append(batchLength, allData...)
-	allData = append(batchIDBytes, allData...)
+	// Enviar el último batch si no está vacío
+	if len(batch) > 0 {
+		c.sendBatch(batchID, batch, protocol)
+		c.waitForBatchConfirmation(protocol)
+		batch = nil
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Errorf("Error reading file: %v", err)
+	}
+}
+
+func (c *Client) askForResults(protocol *Protocol) {
+	finishNotification := NewNotification(c.config.ID)
+	encodedNotification, _ := finishNotification.Serialize()
+	protocol.SendMessage(encodedNotification)
+	responseData, err := protocol.ReceiveMessage()
+	if err != nil {
+		log.Errorf(
+			"action: receive_message | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+		return
+	}
+	responsePacket, err := DeserializeWinnerResponse(responseData)
+	log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %v", responsePacket.Amount)
+}
+
+func (c *Client) openFile(fileName string) (*os.File, error) {
+	file, err := os.Open(fileName)
+	if err != nil {
+		log.Errorf(
+			"Error opening file: %v",
+			err,
+		)
+		return nil, err
+	}
+	return file, err
+}
+
+func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
+	log.Debugf("Batch ID: %v", batchID)
+	batchObj := NewBatch(batchID, batch)
+	allData, err := batchObj.Serialize()
+	if err != nil {
+		log.Criticalf(
+			"action: serialize_batch | result: fail | client_id: %v | error: %v",
+			c.config.ID,
+			err,
+		)
+		return
+	}
 
 	if err := protocol.SendMessage(allData); err != nil {
 		log.Criticalf(
@@ -195,7 +180,9 @@ func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
 		)
 		return
 	}
+}
 
+func (c *Client) waitForBatchConfirmation(protocol *Protocol) {
 	responseData, err := protocol.ReceiveMessage()
 	if err != nil {
 		log.Errorf(

@@ -1,7 +1,6 @@
 from multiprocessing import Process, Barrier, Queue
 import socket
 import logging
-import time
 import signal
 from collections import defaultdict
 from .message import BatchMessage, ACKMessage, FinishedNotification, WinnerMessage
@@ -12,9 +11,24 @@ LENGTH_FINISHED_NOTIFICATION = 2
 NUM_CLIENTS_CON_SERVER = 6
 NUM_CLIENTS = 5
 
+
+def calculate_winners():
+    logging.info("action: sorteo | result: success")
+    bets = load_bets()
+    winners_per_agency = defaultdict(int)
+    for bet in bets:
+        if has_won(bet):
+            winners_per_agency[bet.agency] += 1
+    return winners_per_agency
+
+
+def is_finished_notification(bytes_arr):
+    # Suponiendo que FinishedNotification tiene un identificador único o alguna forma de distinguirse
+    return len(bytes_arr) == LENGTH_FINISHED_NOTIFICATION
+
+
 class Server:
     def __init__(self, port, listen_backlog, timeout=5):
-        print("Starting new Server")
         # Initialize server socket
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server_socket.bind(('', port))
@@ -38,14 +52,11 @@ class Server:
             while len(self.client_sockets) < NUM_CLIENTS:
                 try:
                     client_sock = self.__accept_new_connection()
-                    logging.debug(f"Recibí client_sock {client_sock}")
                     if client_sock:
                         self.client_sockets.append(client_sock)
                         process = Process(target=self.__handle_client_connection, args=(client_sock,))
                         self.processes.append(process)
-                        logging.debug("New process started")
                         process.start()
-                    logging.debug(f"No paso nada uff {self.client_sockets}")
                 except OSError as e:
                     if self.kill_now:
                         # If we are shutting down, it's okay if accept fails
@@ -70,7 +81,7 @@ class Server:
     def __process_connections(self):
         self.barrier.wait()
         logging.debug("All clients have finished sending bets.")
-        winners_per_agency = self.__calculate_winners()
+        winners_per_agency = calculate_winners()
         for _ in range(NUM_CLIENTS):
             self.result_queue.put(winners_per_agency)
         self.barrier.wait()
@@ -88,7 +99,7 @@ class Server:
             try:
                 msg_encoded = protocol.receive_message()
                 if msg_encoded:
-                    if self.is_finished_notification(msg_encoded):
+                    if is_finished_notification(msg_encoded):
                         notification = FinishedNotification.decode(msg_encoded)
                         logging.info(f"action: finished_notification | result: success | client_id: {notification.client_id}")
                         self.barrier.wait()
@@ -139,10 +150,8 @@ class Server:
                 bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
                 bets.append(bet)
         except:
-            logging.info(msg)
             logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")
         
-        print("Finished processing batch")
         self.task_queue.put(bets)
         ack_msg = ACKMessage(batch_message.batch_id, len(bets))
         protocol.send_message(ack_msg.encode()) 
@@ -152,15 +161,6 @@ class Server:
             winner_msg = WinnerMessage(winners_per_agency[agency_id])
             protocol.send_message(winner_msg.encode())
 
-    def __calculate_winners(self):
-        logging.info("action: sorteo | result: success")
-        bets = load_bets()
-        winners_per_agency = defaultdict(int)
-        for bet in bets: 
-            if has_won(bet):
-                winners_per_agency[bet.agency] += 1
-        return winners_per_agency
-    
     def exit_gracefully(self, signum, frame):
         """
         Set the kill flag to True to stop accepting new connections and close the server socket.
@@ -196,10 +196,6 @@ class Server:
             self.result_queue.close()
         except Exception as e:
             logging.error(f"action: cleanup_queues | result: fail | error: {e}")
-
-    def is_finished_notification(self, bytes_arr):
-        # Suponiendo que FinishedNotification tiene un identificador único o alguna forma de distinguirse
-        return len(bytes_arr) == LENGTH_FINISHED_NOTIFICATION
 
     def __process_bets(self):
         """

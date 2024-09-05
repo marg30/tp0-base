@@ -1,9 +1,9 @@
 package common
 
 import (
-	"bytes"
-	"encoding/binary"
-	"strconv"
+    "encoding/binary"
+    "bytes"
+    "strconv"
 )
 
 type BetPacket struct {
@@ -80,14 +80,24 @@ func (p *FinishedNotification) Serialize() ([]byte, error) {
 }
 
 type WinnerResponse struct {
-	Amount uint32
+	Documents []uint64
 }
 
 func DeserializeWinnerResponse(data []byte) (*WinnerResponse, error) {
-	response := &WinnerResponse{}
+    response := &WinnerResponse{}
 	buf := bytes.NewReader(data)
-	if err := binary.Read(buf, binary.BigEndian, &response.Amount); err != nil {
-		return nil, err
+
+	for {
+		var document uint64
+		err := binary.Read(buf, binary.BigEndian, &document)
+		if err != nil {
+			break
+		}
+		response.Documents = append(response.Documents, document)
 	}
 	return response, nil
+}
+
+func (w *WinnerResponse) NumberWinners() (int) {
+    return len(w.Documents)
 }

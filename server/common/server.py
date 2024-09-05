@@ -55,7 +55,6 @@ class Server:
             self.client_sockets.append(client_sock)
             msg_encoded = protocol.receive_message()
             msg = Message.decode(msg_encoded)
-            print(msg)
             bet = Bet(msg.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
             store_bets([bet])
             logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')

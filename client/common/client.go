@@ -51,7 +51,7 @@ func (c *Client) createClientSocket() error {
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop(ctx context.Context) {
+func (c *Client) StartClientLoop(ctx context.Context, cancel context.CancelFunc) {
 	select {
 	case <-ctx.Done():
 		log.Infof("Client loop stopped due to shutdown signal")
@@ -64,7 +64,6 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 		}
 
 		protocol, err := NewProtocol(c.conn, c.config.ID)
-		log.Infof("id %v", c.config.ID)
 		if err != nil {
 			log.Criticalf(
 				"action: serialize_data | result: fail | client_id: %v | error: %v",
@@ -114,8 +113,7 @@ func (c *Client) StartClientLoop(ctx context.Context) {
 		)
 
 		c.conn.Close()
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
+		cancel()
 	}
 }
 

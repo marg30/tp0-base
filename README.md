@@ -85,7 +85,7 @@ La respuesta del servidor en este caso tiene un formato distinto. Se envían los
 Se mantiene el mismo protocolo que en el ejercicio 6, pero se agregan dos tipos de mensajes más para consultar el sorteo y recibir el resultado del sorteo. 
 
 El cliente envía un mensaje `FinishedNotification` que consiste en solo un 1 byte que representa el ID de la agencia. 
-El servidor responde a este mensaje con un mensaje de 4 bytes que representa la cantidad de ganadores de la agencia. 
+El servidor responde a este mensaje con un mensaje con todos los documentos (8 bytes por cada documento) de los ganadores registrados en la agencia. 
 
 #### Implementación
 

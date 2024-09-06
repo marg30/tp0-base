@@ -80,11 +80,10 @@ class Server:
                     self.__handle_bet(msg_encoded, protocol)
             else: 
                 logging.info("No more data received from client.")
+        except socket.timeout:
+            logging.debug("action: receive_message | result: timeout | info: No data received (timeout)")
         except OSError as e:
-            if e == "timed out":
-                logging.debug("No more data received from client.")
-            else:
-                logging.error(f"action: receive_message | result: fail | error: {e}")
+            logging.error(f"action: receive_message | result: fail | error: {e}")
 
     def __accept_new_connection(self):
         """

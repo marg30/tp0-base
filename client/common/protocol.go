@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"net"
+	"fmt"
 	"strconv"
 )
+
+const MaxMessageSize = 8192 // 8KB
 
 // Protocol Struct to handle communication protocol
 type Protocol struct {
@@ -29,6 +32,10 @@ func (p *Protocol) SendMessage(data []byte) error {
 	dataLength := uint32(len(allData))
 	var lengthBuffer bytes.Buffer
 	log.Debugf("length: %d", dataLength)
+
+	if dataLength > MaxMessageSize {
+		return fmt.Errorf("data exceeds 8KB limit: %d bytes", dataLength)
+	}
 
 	err := binary.Write(&lengthBuffer, binary.BigEndian, dataLength)
 	if err != nil {

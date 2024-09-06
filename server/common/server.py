@@ -15,10 +15,10 @@ NUM_CLIENTS = 5
 def calculate_winners():
     logging.info("action: sorteo | result: success")
     bets = load_bets()
-    winners_per_agency = defaultdict(int)
+    winners_per_agency = defaultdict(list)
     for bet in bets:
         if has_won(bet):
-            winners_per_agency[bet.agency] += 1
+            winners_per_agency[bet.agency].append(bet.document)
     return winners_per_agency
 
 

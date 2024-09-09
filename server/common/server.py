@@ -1,4 +1,4 @@
-from multiprocessing import Process, Barrier, Queue
+from multiprocessing import Process, Barrier, Queue, Lock
 import socket
 import logging
 import signal
@@ -12,18 +12,7 @@ NUM_CLIENTS_CON_SERVER = 6
 NUM_CLIENTS = 5
 
 
-def calculate_winners():
-    logging.info("action: sorteo | result: success")
-    bets = load_bets()
-    winners_per_agency = defaultdict(list)
-    for bet in bets:
-        if has_won(bet):
-            winners_per_agency[bet.agency].append(bet.document)
-    return winners_per_agency
-
-
 def is_finished_notification(bytes_arr):
-    # Suponiendo que FinishedNotification tiene un identificador único o alguna forma de distinguirse
     return len(bytes_arr) == LENGTH_FINISHED_NOTIFICATION
 
 
@@ -42,13 +31,11 @@ class Server:
         self.client_agency_map = defaultdict(int)
         self._server_socket.settimeout(self.timeout)
         self.barrier = Barrier(NUM_CLIENTS_CON_SERVER)
-        self.task_queue = Queue()  # Cola para enviar apuestas al proceso padre
         self.result_queue = Queue()  # Cola para enviar resultados a los hijos
+        self.file_lock = Lock()
 
     def run(self):
         try:
-            bet_processing_worker = Process(target=self.__process_bets)
-            bet_processing_worker.start()
             while len(self.client_sockets) < NUM_CLIENTS:
                 try:
                     client_sock = self.__accept_new_connection()
@@ -67,21 +54,19 @@ class Server:
             if len(self.client_sockets) > 0:
                 logging.debug("Start to receive bets")
                 self.__process_connections()
-        
+
             logging.debug("joining processes")
             for p in self.processes:
                 p.join()
             logging.debug("finished joining")
         finally:
-            bet_processing_worker.terminate()
-            bet_processing_worker.join()
             self.__cleanup_resources()
             logging.info("action: shutdown_server | result: success")
 
     def __process_connections(self):
         self.barrier.wait()
         logging.debug("All clients have finished sending bets.")
-        winners_per_agency = calculate_winners()
+        winners_per_agency = self.calculate_winners()
         for _ in range(NUM_CLIENTS):
             self.result_queue.put(winners_per_agency)
         self.barrier.wait()
@@ -105,11 +90,11 @@ class Server:
                         self.barrier.wait()
                         winners_per_agency = self.result_queue.get()
                         self.__send_winners(protocol, winners_per_agency)
-                        self.barrier.wait() 
+                        self.barrier.wait()
                         break
                     else:
                         self.__handle_bet(msg_encoded, protocol)
-                else: 
+                else:
                     logging.info("No more data received from client.")
             except OSError as e:
                 logging.error(f"action: receive_message | result: fail | error: {e}")
@@ -146,22 +131,25 @@ class Server:
         if protocol.client_sock not in self.client_agency_map:
             self.client_agency_map[protocol.client_sock] = batch_message.client_id
 
-        try: 
+        try:
             logging.debug("Processing batch")
             for msg in batch_message.messages:
                 bet = Bet(batch_message.client_id, msg.name, msg.last_name, msg.id_document, msg.birth_date, msg.number)
                 bets.append(bet)
         except:
             logging.error(f"action: apuesta_recibida | result: fail | cantidad: {len(bets)}.")
-        
-        self.task_queue.put(bets)
+
+        with self.file_lock:
+            store_bets(bets)
+            logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
+
         ack_msg = ACKMessage(batch_message.batch_id, len(bets))
-        protocol.send_message(ack_msg.encode()) 
+        protocol.send_message(ack_msg.encode())
 
     def __send_winners(self, protocol, winners_per_agency):        
-            agency_id = self.client_agency_map[protocol.client_sock]
-            winner_msg = WinnerMessage(winners_per_agency[agency_id])
-            protocol.send_message(winner_msg.encode())
+        agency_id = self.client_agency_map[protocol.client_sock]
+        winner_msg = WinnerMessage(winners_per_agency[agency_id])
+        protocol.send_message(winner_msg.encode())
 
     def exit_gracefully(self, signum, frame):
         """
@@ -172,11 +160,8 @@ class Server:
         self._server_socket.close()
 
         for process in self.processes:
-            if process.is_alive():
-                process.terminate()
+            process.join()
 
-        for process in self.processes:
-            process.join()        
         self.__cleanup_resources()
         logging.info("action: shutdown_server | result: success")
 
@@ -191,26 +176,15 @@ class Server:
                     client_sock.close()
             except OSError as e:
                 logging.error(f"action: close_client_socket | result: fail | error: {e}")
-        logging.info("action: cleanup_resources | result: success")    
+        logging.info("action: cleanup_resources | result: success")
 
-        try:
-            self.task_queue.close()
-            self.result_queue.close()
-        except Exception as e:
-            logging.error(f"action: cleanup_queues | result: fail | error: {e}")
-
-    def __process_bets(self):
-        """
-        Continuously process bets from the task_queue as they are received.
-        This function will run in a separate process.
-        """
-        logging.info("action: start_processing_bets | result: in_progress")
-        while not self.kill_now:
-            try:
-                if not self.task_queue.empty():
-                    bets = self.task_queue.get()
-                    store_bets(bets)
-                    logging.info(f"action: apuesta_recibida | result: success | cantidad: {len(bets)}")
-            except Exception as e:
-                logging.error(f"action: process_bets | result: fail | error: {e}")
-        logging.info("action: stop_processing_bets | result: success")
+    def calculate_winners(self):
+        logging.info("action: sorteo | result: success")
+        bets = []
+        with self.file_lock:
+            bets = load_bets()
+        winners_per_agency = defaultdict(list)
+        for bet in bets:
+            if has_won(bet):
+                winners_per_agency[bet.agency].append(bet.document)
+        return winners_per_agency

@@ -176,6 +176,11 @@ class Server:
                     client_sock.close()
             except OSError as e:
                 logging.error(f"action: close_client_socket | result: fail | error: {e}")
+        try:
+            self.result_queue.close()
+            self.result_queue.join_thread()
+        except Exception as e:
+            logging.error(f"action: cleanup_queues | result: fail | error: {e}")
         logging.info("action: cleanup_resources | result: success")
 
     def calculate_winners(self):

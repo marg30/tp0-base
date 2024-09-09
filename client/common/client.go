@@ -113,7 +113,10 @@ func (c *Client) processBetsInBatch(protocol *Protocol) {
 		// Si se completa el tamaño del batch, enviarlo
 		if len(batch) == c.config.BatchAmount {
 			c.sendBatch(batchID, batch, protocol)
-			c.waitForBatchConfirmation(protocol)
+			err = c.waitForBatchConfirmation(protocol)
+			if err != nil {
+				return
+			}
 			batch = nil
 			batchID++
 		}
@@ -183,7 +186,7 @@ func (c *Client) sendBatch(batchID int, batch []BetPacket, protocol *Protocol) {
 	}
 }
 
-func (c *Client) waitForBatchConfirmation(protocol *Protocol) {
+func (c *Client) waitForBatchConfirmation(protocol *Protocol) error {
 	responseData, err := protocol.ReceiveMessage()
 	if err != nil {
 		log.Errorf(
@@ -191,7 +194,7 @@ func (c *Client) waitForBatchConfirmation(protocol *Protocol) {
 			c.config.ID,
 			err,
 		)
-		return
+		return err
 	}
 	responsePacket, err := DeserializeResponse(responseData)
 	if err != nil {
@@ -200,10 +203,11 @@ func (c *Client) waitForBatchConfirmation(protocol *Protocol) {
 			c.config.ID,
 			err,
 		)
-		return
+		return err
 	}
 	batchID, batchSize := responsePacket.AsIntegers()
 	log.Infof("action: batch_sent | result: success | batch_id: %v | cantidad: %v", batchID, batchSize)
+	return nil
 }
 
 // Shutdown handles the cleanup of resources

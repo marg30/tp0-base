@@ -31,3 +31,8 @@ La barrera se utiliza para sincronizar la finalización de todos los clientes. E
 
 Una vez que todos los procesos hijos han finalizado (confirmado por la barrera), el proceso principal realiza el cálculo del sorteo y determina los ganadores.
 El servidor puede enviar los resultados a cada cliente individualmente después de que el sorteo haya concluido. Cuando se concluye el sorteo, se cierran los clientes y el servidor. 
+
+
+### Correcciones
+- Saco el proceso trabajador que escribía las apuestas recibidas. Cada proceso va a adquirir un mutex para poder escribir las apuestas recibidas en el archivo.
+- Agrego manejo de señales para los procesos hijos. 
